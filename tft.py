@@ -7,17 +7,14 @@ from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 import time
 
-# Veri Yükleme
 prices = pd.read_csv("thyao.csv")
 prices['Tarih'] = pd.to_datetime(prices['Tarih'])
 prices['Kapanış Fiyatı'] = prices['Kapanış Fiyatı'].astype(float)
 prices = prices.interpolate()
 
-# Son 2 yılın verileri
 cutoff_date = prices['Tarih'].max() - pd.DateOffset(years=2)
 prices_recent = prices[prices['Tarih'] >= cutoff_date].copy()
 
-# Ek Zaman Serisi Özellikleri Ekleniyor
 prices_recent['Day'] = prices_recent['Tarih'].dt.day
 prices_recent['Month'] = prices_recent['Tarih'].dt.month
 prices_recent['Year'] = prices_recent['Tarih'].dt.year
@@ -28,11 +25,9 @@ prices_recent['30D_MA'] = prices_recent['Kapanış Fiyatı'].rolling(window=30, 
 scaler = MinMaxScaler()
 prices_recent['Scaled Fiyat'] = scaler.fit_transform(prices_recent[['Kapanış Fiyatı']])
 
-# Çıktılar ve Girdiler
 X_prices = prices_recent[['Days', 'Day', 'Month', 'Year', 'Weekday', '7D_MA', '30D_MA']].fillna(0).values
 y_prices = prices_recent['Scaled Fiyat'].values
 
-# Veri Setlerini Ayırma
 train_cutoff = prices_recent['Tarih'].max() - pd.DateOffset(months=3)
 train_data = prices_recent[prices_recent['Tarih'] <= train_cutoff].copy()
 test_data = prices_recent[prices_recent['Tarih'] > train_cutoff].copy()
@@ -42,7 +37,6 @@ y_train = train_data['Scaled Fiyat'].values
 X_test = test_data[['Days', 'Day', 'Month', 'Year', 'Weekday', '7D_MA', '30D_MA']].fillna(0).values
 y_test = test_data['Scaled Fiyat'].values
 
-# TFT Modeli (NVIDIA Temporal Fusion Transformer)
 class TFTModel(nn.Module):
     def __init__(self, input_size=7, hidden_size=128, output_size=1, num_layers=3, dropout=0.4):
         super(TFTModel, self).__init__()
@@ -58,7 +52,6 @@ class TFTModel(nn.Module):
         out = self.fc(attn_out[:, -1, :])
         return out
 
-# Model, Optimizer ve Loss Fonksiyonu
 input_dim = 7
 hidden_dim = 128
 output_dim = 1
@@ -68,13 +61,11 @@ criterion = nn.SmoothL1Loss()
 tft_optimizer = torch.optim.AdamW(tft_model.parameters(), lr=0.00001, weight_decay=3e-5)
 epochs = 200
 
-# Tensor Dönüşümleri
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
 y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
 X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
 y_test_tensor = torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
 
-# Model Eğitimi
 tft_model.train()
 tft_train_losses = []
 tft_test_losses = []
@@ -96,7 +87,6 @@ for epoch in range(epochs):
 training_end_time = time.time()
 training_time = training_end_time - training_start_time
 
-# Eğitim ve Test Kaybı Grafiği
 plt.figure(figsize=(10, 6))
 plt.plot(range(epochs), tft_train_losses, label='Eğitim Kaybı', color='blue')
 plt.plot(range(epochs), tft_test_losses, label='Test Kaybı', color='orange')
@@ -107,13 +97,11 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# Tahmin Grafiği
 future_days = 30
 last_day = prices_recent['Days'].max()
 future_inputs = np.array([[last_day + i, (last_day + i) % 31, ((last_day + i) // 31) % 12 + 1, 2024, (last_day + i) % 7, 0, 0] for i in range(1, future_days + 1)])
 future_inputs_tensor = torch.tensor(future_inputs, dtype=torch.float32)
 
-# TFT Tahminleri
 inference_start_time = time.time()
 tft_model.eval()
 tft_future_predictions = tft_model(future_inputs_tensor.unsqueeze(1)).detach().numpy().squeeze(-1)
@@ -121,7 +109,6 @@ tft_future_predictions = scaler.inverse_transform(tft_future_predictions.reshape
 inference_end_time = time.time()
 inference_time = inference_end_time - inference_start_time
 
-# Grafik
 plt.figure(figsize=(12, 8))
 plt.plot(prices_recent['Tarih'], scaler.inverse_transform(prices_recent[['Scaled Fiyat']]), label="Geçmiş Fiyatlar", color="gray", linestyle="dotted")
 plt.plot(test_data['Tarih'], scaler.inverse_transform(test_data[['Scaled Fiyat']]), label="Gerçek Değerler", color="red")
@@ -136,8 +123,7 @@ plt.title("TFT Tahmin Grafiği")
 plt.grid(True)
 plt.show()
 
-# Performans Değerlendirme
-y_test_actual = scaler.inverse_transform(y_test.reshape(-1, 1))[:len(tft_future_predictions)]  # Test verisini tahmin uzunluğuna sınırla
+y_test_actual = scaler.inverse_transform(y_test.reshape(-1, 1))[:len(tft_future_predictions)]  
 mse = mean_squared_error(y_test_actual, tft_future_predictions)
 mape = np.mean(np.abs((y_test_actual.flatten() - tft_future_predictions) / y_test_actual.flatten())) * 100
 mae = mean_absolute_error(y_test_actual, tft_future_predictions)
